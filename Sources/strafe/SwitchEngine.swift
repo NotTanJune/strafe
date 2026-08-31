@@ -41,35 +41,46 @@ struct StubSwitchEngine: SwitchEngine {
     }
 }
 
-/// The real engine: posts a synthetic high-velocity dock-swipe gesture (SPEC
-/// §1) to jump to the neighboring Space instantly.
+/// The real engine: posts a synthetic dock-swipe gesture (SPEC §1) to move to
+/// the neighboring Space at the selected transition speed.
 ///
 /// Concurrency: `switchSpace` may be called from the main actor (hotkeys, CLI)
 /// or from the event-tap run loop (the interceptor). All mutable prediction
-/// state is guarded by an `NSLock`, so the type is safe to share across those
-/// contexts; the actual CGEvent posting (`strafe_post_switch_gesture`) is a
-/// stateless C call.
+/// and speed state is guarded by an `NSLock`, so the type is safe to share
+/// across those contexts; the actual CGEvent posting
+/// (`strafe_post_switch_gesture`) is a stateless C call.
 final class GestureSwitchEngine: SwitchEngine, @unchecked Sendable {
-    /// Gesture velocity magnitude. 2000.0 is the "Instant" preset — the only
-    /// value that truly skips the slide animation (SPEC §1.4, §5). Lower values
-    /// keep a (shortened) animation.
-    static let instantVelocity: Double = 2000.0
-
-    private let velocity: Double
-
     /// Per-display predicted current-space index, keyed by display UUID
     /// (SPEC §2.4). Avoids rebounding off the laggy live active-space query.
     private let lock = NSLock()
     private var predictions: [String: UInt32] = [:]
+    private var selectedTransitionSpeed: TransitionSpeedPreset
 
-    init(velocity: Double = GestureSwitchEngine.instantVelocity) {
-        self.velocity = velocity
+    init(transitionSpeed: TransitionSpeedPreset = .instant) {
+        self.selectedTransitionSpeed = transitionSpeed
     }
 
     /// Whether the private CGS topology symbols resolved (SPEC §1.1, §6).
     var cgsAvailable: Bool { strafe_cgs_available() }
 
+    /// Current menu-selected synthetic swipe velocity preset.
+    var transitionSpeed: TransitionSpeedPreset {
+        lock.lock()
+        defer { lock.unlock() }
+        return selectedTransitionSpeed
+    }
+
+    /// Apply a fixed, locally selected transition speed. No preference is saved.
+    func setTransitionSpeed(_ preset: TransitionSpeedPreset) {
+        lock.lock()
+        selectedTransitionSpeed = preset
+        lock.unlock()
+    }
+
     func switchSpace(_ direction: SwitchDirection) throws {
+        // Snapshot the setting so one gesture uses one consistent velocity.
+        let velocity = transitionSpeed.velocity
+
         // Read live topology once. If CGS symbols are unavailable we can't do
         // bounds/prediction bookkeeping — fall back to posting unconditionally.
         var info = StrafeInfo()

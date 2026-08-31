@@ -93,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Permissions.checkAccessibility(prompt: true)
 
         interceptor = SwipeInterceptor(engine: engine)
-        statusItem = StatusItemController(interceptor: interceptor)
+        statusItem = StatusItemController(interceptor: interceptor, engine: engine)
 
         hotkeys = HotkeyManager(engine: engine)
         hotkeys.register()

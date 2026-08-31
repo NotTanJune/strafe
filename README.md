@@ -112,8 +112,9 @@ The app is about 1,080 lines of Swift and C with no third-party dependencies —
 - **3-finger swipe** — just works once strafe is running and has Accessibility.
   Swipe left/right between Spaces and the switch is instant.
 - **Keyboard** — `ctrl`+`opt`+`←` and `ctrl`+`opt`+`→` switch Spaces.
-- **Menu bar** — click the strafe icon to enable/disable interception or check
-  whether Accessibility has been granted.
+- **Menu bar** — click the strafe icon to enable/disable interception, choose
+  a runtime-only **Transition Speed** preset (`Normal` through `Instant`), or
+  check whether Accessibility has been granted.
 - **CLI:**
 
   ```
