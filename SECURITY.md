@@ -9,9 +9,9 @@ The whole program is about **1,120 lines** of Swift + C (`wc -l Sources/**`).
 You can build it from source in about 30 seconds (`swift build`) and audit it
 in an afternoon.
 
-**strafe ships no binaries.** It is distributed as source only — the only way
-to run it is to compile the code you can read. There is no prebuilt artifact,
-no download, and no update channel to trust.
+Source remains the canonical, auditable form of strafe. This fork also commits
+an ad-hoc-signed arm64 convenience bundle at `artifacts/strafe.app`; it is not
+an update channel or a substitute for reviewing and building the source.
 
 ---
 
@@ -83,14 +83,19 @@ transmitted; both are read, used for that one decision, and discarded.
 
 Each of these is verifiable with a single grep over `Sources/`.
 
-- **No network code, at all.** strafe never opens a socket, makes an HTTP
-  request, or resolves a host.
+- **No remote network code.** strafe never opens a TCP or UDP socket, makes an
+  HTTP request, or resolves a host. It does open one owner-only Unix domain
+  socket at `/tmp/strafe.sock` for the local OpenLogi integration. The server
+  accepts only `switch left` and `switch right`, and returns a short local
+  response after the engine handles the request
+  (`Sources/strafe/ControlServer.swift`).
 
   ```
-  grep -rniE 'URLSession|NSURL|Network|CFSocket|socket|curl|http://|https://' Sources/
+  grep -rniE 'URLSession|NSURL|Network|CFSocket|curl|http://|https://' Sources/
   ```
 
-  Zero hits.
+  Zero hits. The expected local socket calls are isolated in
+  `Sources/strafe/ControlServer.swift`.
 
 - **No third-party dependencies.** `Package.swift` declares no `dependencies`
   and no `.package(...)` entries — only Apple system frameworks
@@ -98,10 +103,11 @@ Each of these is verifiable with a single grep over `Sources/`.
   27-line `Package.swift` in full.
 
 - **No analytics or telemetry.** strafe writes only to the process's own
-  `stderr` (`grep -rn FileHandle.standardError Sources/`) and `stdout` (the
+  `stderr` (`grep -rn FileHandle.standardError Sources/`), `stdout` (the
   `strafe status` CLI readout in `Permissions.printStatus`, `Sources/strafe/Permissions.swift`
-  ~line 28) — never to a network socket, a file, or an analytics sink. Nothing
-  batches, serializes, or transmits usage.
+  ~line 28), and the fixed local control response described above. It never
+  sends usage data to a network or analytics sink. Nothing batches, serializes,
+  or transmits usage.
 
 - **No auto-update.** strafe never downloads or executes anything. There is no
   updater, no Sparkle, no download URL (covered by the network grep above).
@@ -114,17 +120,20 @@ Each of these is verifiable with a single grep over `Sources/`.
   grep -rniE 'dlopen|dlsym' Sources/    # zero hits
   ```
 
-- **No file access beyond its own bundle.** strafe reads and writes no files.
-  There are no `FileManager`, `contentsOfFile`, `fopen`, or write calls in
-  `Sources/`. (`grep -rniE 'FileManager|contentsOfFile|fopen|write\(toFile' Sources/`.)
+- **No file-content access beyond its own bundle.** strafe does not read or
+  write user files, preferences, caches, or databases. The only filesystem
+  object it creates is the temporary owner-only Unix socket described above;
+  request bytes are read from that socket and response bytes are written back
+  to the connected local client.
 
 - **No subprocess execution.** strafe spawns no processes. Unlike some prior
   art, it does **not** shell out to `tccutil` or anything else
   (`grep -rniE 'Process\(\)|/usr/bin|/bin/|tccutil' Sources/` — no spawns).
 
 - **No persistence beyond the app itself.** strafe stores no preferences files,
-  no databases, no caches. Quitting and deleting `strafe.app` leaves nothing on
-  disk (see README → Uninstall).
+  no databases, and no caches. Its temporary control socket is removed on
+  normal termination and replaced on the next launch if macOS leaves a stale
+  owner-matching socket (see README → Uninstall).
 
 ---
 
@@ -156,7 +165,7 @@ swift build
 wc -l Sources/strafe/*.swift Sources/CStrafe/CStrafe.c Sources/CStrafe/include/CStrafe.h
 
 # 3. Confirm zero network / dynamic-loading / subprocess code.
-grep -rniE 'URLSession|NSURL|Network|CFSocket|socket|curl|http://|https://|dlopen|dlsym' Sources/
+grep -rniE 'URLSession|NSURL|Network|CFSocket|curl|http://|https://|dlopen|dlsym' Sources/
 grep -rniE 'Process\(\)|tccutil|/usr/bin|/bin/' Sources/
 
 # 4. Confirm the tap mask excludes keystrokes.

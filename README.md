@@ -87,7 +87,7 @@ acknowledgment and their copyright notice.
 
 ## Install
 
-strafe is distributed as source only — there is no prebuilt binary to trust.
+strafe is distributed with auditable source and an optional convenience bundle.
 You build the code you can read.
 
 ```bash
@@ -96,6 +96,8 @@ git clone https://github.com/rileycx/strafe strafe && cd strafe
 ```
 
 This builds a release binary and assembles `build/strafe.app` (ad-hoc signed).
+The source repository also contains the convenience bundle
+`artifacts/strafe.app`; building from source remains the reproducible path.
 Then:
 
 1. Drag `build/strafe.app` to `/Applications`.
@@ -115,6 +117,10 @@ The app is about 1,080 lines of Swift and C with no third-party dependencies —
 - **Menu bar** — click the strafe icon to enable/disable interception, choose
   a runtime-only **Transition Speed** preset (`Normal` through `Instant`), or
   check whether Accessibility has been granted.
+- **OpenLogi integration** — when the Strafe menu-bar app is running, OpenLogi
+  desktop actions reuse Strafe's currently selected **Transition Speed**. If
+  Strafe is not running, OpenLogi uses its own native Space-switch fallback.
+  See [the integration guide](docs/OPENLOGI-INTEGRATION.md).
 - **CLI:**
 
   ```
@@ -130,10 +136,10 @@ create an *active* event tap — the kind that can suppress the slow animated
 swipe and replace it with the instant one.
 
 The tap sees only trackpad gesture and dock-control events. It does **not** see
-keystrokes: the event mask excludes key events entirely, and strafe has no
-network, telemetry, file access, or subprocess code. Every one of those claims
-is grep-verifiable — see [SECURITY.md](SECURITY.md) for the exact file and line
-pointers.
+keystrokes: the event mask excludes key events entirely. Strafe also exposes
+one owner-only Unix socket at `/tmp/strafe.sock` for the fixed OpenLogi switch
+commands. It has no network listener, telemetry, or subprocess code. See
+[SECURITY.md](SECURITY.md) for the exact file and line pointers.
 
 To revoke: **System Settings › Privacy & Security › Accessibility**, and toggle
 strafe off (or remove it from the list).
@@ -145,8 +151,9 @@ strafe off (or remove it from the list).
 3. Remove its entry from **System Settings › Privacy & Security ›
    Accessibility**.
 
-That's everything. strafe writes no preferences, caches, or other files — there
-is nothing else to clean up.
+That's everything. strafe writes no preferences or caches. It removes its
+temporary `/tmp/strafe.sock` control endpoint when it exits; if macOS terminates
+it abruptly, the next launch safely replaces an owner-matching stale socket.
 
 ## How it works
 

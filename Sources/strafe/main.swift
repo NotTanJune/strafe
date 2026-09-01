@@ -79,6 +79,7 @@ func runMenuBarApp(engine: GestureSwitchEngine) {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let engine: GestureSwitchEngine
+    private var controlServer: StrafeControlServer!
     private var interceptor: SwipeInterceptor!
     private var hotkeys: HotkeyManager!
     private var statusItem: StatusItemController!
@@ -91,6 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prompt for accessibility up front so the tap can be created.
         Permissions.checkAccessibility(prompt: true)
+
+        controlServer = StrafeControlServer(engine: engine)
+        controlServer.start()
 
         interceptor = SwipeInterceptor(engine: engine)
         statusItem = StatusItemController(interceptor: interceptor, engine: engine)
@@ -113,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        controlServer?.stop()
         interceptor?.teardown()
         hotkeys?.unregister()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
