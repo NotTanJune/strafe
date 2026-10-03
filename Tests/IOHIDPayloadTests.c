@@ -9,6 +9,15 @@
 static CGEventRef postedEvents[6];
 static unsigned postedCount;
 static CFArrayRef overlayWindows;
+static CFPropertyListRef naturalScrolling;
+
+// Supply the Natural scrolling preference so direction tests do not depend on
+// the user's settings. NULL models the key being absent (system default: on).
+CFPropertyListRef CFPreferencesCopyAppValue(CFStringRef key, CFStringRef applicationID) {
+    assert(CFEqual(key, CFSTR("com.apple.swipescrolldirection")));
+    assert(CFEqual(applicationID, kCFPreferencesAnyApplication));
+    return naturalScrolling ? CFRetain(naturalScrolling) : NULL;
+}
 
 // Supply window metadata so overlay tests do not depend on the live desktop.
 CFArrayRef CGWindowListCopyWindowInfo(CGWindowListOption options, CGWindowID relativeToWindow) {
@@ -58,14 +67,18 @@ void CGEventPost(CGEventTapLocation location, CGEventRef event) {
     postedEvents[postedCount++] = (CGEventRef)CFRetain(event);
 }
 
-static void check_instant_switch(StrafeDirection direction) {
+static void check_instant_switch(StrafeDirection direction, CFPropertyListRef natural,
+                                 bool naturalOn) {
+    naturalScrolling = natural;
     postedCount = 0;
     assert(strafe_post_switch_gesture(direction, 2000));
     bool augmented = strafe_uses_iohid_payload();
+    assert(strafe_synthetic_swipe_inverted() == (augmented && naturalOn));
     assert(postedCount == (augmented ? 6 : 3));
     const int phases[] = {1, 2, 4};
     double sign = direction == StrafeDirectionRight ? 1 : -1;
-    if (augmented) sign = -sign;
+    // macOS 27 reads a posted swipe through Natural scrolling (measured on 27.0.1).
+    if (augmented && naturalOn) sign = -sign;
     for (unsigned i = 0; i < 3; i++) {
         CGEventRef event = postedEvents[i * (augmented ? 2 : 1)];
         assert(CGEventGetType(event) == 30);
@@ -79,6 +92,25 @@ static void check_instant_switch(StrafeDirection direction) {
         }
     }
     for (unsigned i = 0; i < postedCount; i++) CFRelease(postedEvents[i]);
+    naturalScrolling = NULL;
+}
+
+static void check_instant_switch_directions(void) {
+    int zero = 0;
+    int one = 1;
+    CFNumberRef numberOff = CFNumberCreate(NULL, kCFNumberIntType, &zero);
+    CFNumberRef numberOn = CFNumberCreate(NULL, kCFNumberIntType, &one);
+    assert(numberOff && numberOn);
+    for (int d = 0; d < 2; d++) {
+        StrafeDirection direction = d ? StrafeDirectionRight : StrafeDirectionLeft;
+        check_instant_switch(direction, NULL, true);
+        check_instant_switch(direction, kCFBooleanTrue, true);
+        check_instant_switch(direction, kCFBooleanFalse, false);
+        check_instant_switch(direction, numberOn, true);
+        check_instant_switch(direction, numberOff, false);
+    }
+    CFRelease(numberOff);
+    CFRelease(numberOn);
 }
 
 static uint32_t read32(const uint8_t *bytes) {
@@ -149,12 +181,11 @@ int main(void) {
     check_payload(2, -FLT_TRUE_MIN, 0, -1, 0);
     check_payload(4, INFINITY, 1e30, 0, INT32_MAX);
     check_payload(4, NAN, -1e30, 0, INT32_MIN);
-    assert(strafe_event_moves_right(-1) == strafe_uses_iohid_payload());
-    assert(strafe_event_moves_right(1) != strafe_uses_iohid_payload());
+    assert(strafe_event_moves_right(1));
+    assert(!strafe_event_moves_right(-1));
     assert(!strafe_event_moves_right(0));
     assert(strafe_tap_event_mask() == ((1ULL << 29) | (1ULL << 30)));
-    check_instant_switch(StrafeDirectionRight);
-    check_instant_switch(StrafeDirectionLeft);
+    check_instant_switch_directions();
     check_overlay_detection();
     puts("IOHID payload, direction, and overlay tests passed (no events posted)");
 }

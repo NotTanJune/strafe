@@ -227,8 +227,9 @@ never runs its own animated version. For the field-by-field derivation, read
 
 If an older build opens but swipes do nothing on macOS 27, rebuild and install
 the current source. macOS 27 requires an embedded IOHID payload on synthetic
-gestures and reverses their direction encoding. This build handles both at
-runtime, retaining the existing gesture format on earlier macOS versions.
+gestures and reads their direction through the Natural scrolling setting. This
+build handles both at runtime, follows Natural scrolling changes without a
+relaunch, and keeps the existing gesture format on earlier macOS versions.
 
 After replacing an ad-hoc signed build, remove the stale strafe entry in
 **System Settings › Privacy & Security › Accessibility**, add the updated

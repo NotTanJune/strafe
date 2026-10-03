@@ -35,9 +35,11 @@ typedef struct {
 // topology can't be read (bounds guard degrades) but synthesis still works.
 bool strafe_cgs_available(void);
 
-// Runtime OS capability; macOS 27 requires augmented synthetic gestures and
-// reverses the sign of incoming horizontal progress/velocity.
+// Runtime OS capability; macOS 27 requires augmented synthetic gestures.
 bool strafe_uses_iohid_payload(void);
+// True when a posted swipe's sign must be flipped to reach the intended Space:
+// macOS 27 with Natural scrolling on. Read live from the user's preference.
+bool strafe_synthetic_swipe_inverted(void);
 bool strafe_event_moves_right(double progressOrVelocity);
 void strafe_clear_swipe_motion(CGEventRef event);
 
