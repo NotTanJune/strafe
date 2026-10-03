@@ -31,9 +31,35 @@ final class SwipeInterceptor: @unchecked Sendable {
     private var swipeFired = false
     private var swipePosted = false
 
+    // MARK: - Tap-creation retry. Main-run-loop confined.
+    //
+    // `CGEvent.tapCreate` fails when Accessibility is not (yet) granted. A
+    // rebuild re-signs the binary and silently invalidates the previous TCC
+    // grant, so the first launch after every build hits this. Without a retry
+    // the menu-bar app keeps running with no tap and trackpad swipes fall
+    // through to native macOS while the control socket keeps working.
+    private let retryInterval: TimeInterval = 1.0
+    private var retryTimer: Timer?
+
     init(engine: SwitchEngine, isExposeActive: @escaping () -> Bool = { strafe_is_expose_active() }) {
         self.engine = engine
         self.isExposeActive = isExposeActive
+    }
+
+    /// Poll until Accessibility is granted, then attempt `start()` again.
+    private func scheduleRetry() {
+        guard retryTimer == nil else { return }
+        let timer = Timer(timeInterval: retryInterval, repeats: true) { [weak self] _ in
+            guard let self, Permissions.isAccessibilityGranted else { return }
+            self.start()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        retryTimer = timer
+    }
+
+    private func cancelRetry() {
+        retryTimer?.invalidate()
+        retryTimer = nil
     }
 
     // MARK: - Lifecycle
@@ -68,10 +94,12 @@ final class SwipeInterceptor: @unchecked Sendable {
             userInfo: userInfo
         ) else {
             FileHandle.standardError.write(
-                Data("[SwipeInterceptor] failed to create event tap (accessibility not granted?)\n".utf8)
+                Data("[SwipeInterceptor] failed to create event tap (accessibility not granted?); retrying every \(retryInterval)s\n".utf8)
             )
+            scheduleRetry()
             return
         }
+        cancelRetry()
 
         // SPEC §2.1: source added to the MAIN run loop in common modes.
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -98,6 +126,7 @@ final class SwipeInterceptor: @unchecked Sendable {
 
     /// Fully remove the tap from the main run loop and release it.
     func teardown() {
+        cancelRetry()
         if let runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         }
