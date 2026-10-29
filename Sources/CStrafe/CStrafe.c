@@ -182,7 +182,8 @@ static CFStringRef copy_cursor_display_identifier(void) {
     if (CGGetDisplaysWithPoint(loc, 16, displays, &matching) != kCGErrorSuccess || matching == 0) {
         return NULL;
     }
-    CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(displays[0]);
+    // A mirror shares its source's bounds but owns no Spaces; use the mirror set's primary.
+    CFUUIDRef uuid = CGDisplayCreateUUIDFromDisplayID(CGDisplayPrimaryDisplay(displays[0]));
     if (!uuid) { return NULL; }
     CFStringRef str = CFUUIDCreateString(NULL, uuid);
     CFRelease(uuid);
