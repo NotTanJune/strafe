@@ -65,7 +65,7 @@ static void check_instant_switch(StrafeDirection direction) {
     assert(postedCount == (augmented ? 6 : 3));
     const int phases[] = {1, 2, 4};
     double sign = direction == StrafeDirectionRight ? 1 : -1;
-    if (augmented) sign = -sign;
+    if (strafe_posted_sign_reversed()) sign = -sign;
     for (unsigned i = 0; i < 3; i++) {
         CGEventRef event = postedEvents[i * (augmented ? 2 : 1)];
         assert(CGEventGetType(event) == 30);
@@ -149,8 +149,8 @@ int main(void) {
     check_payload(2, -FLT_TRUE_MIN, 0, -1, 0);
     check_payload(4, INFINITY, 1e30, 0, INT32_MAX);
     check_payload(4, NAN, -1e30, 0, INT32_MIN);
-    assert(strafe_event_moves_right(-1) == strafe_uses_iohid_payload());
-    assert(strafe_event_moves_right(1) != strafe_uses_iohid_payload());
+    assert(strafe_event_moves_right(1));
+    assert(!strafe_event_moves_right(-1));
     assert(!strafe_event_moves_right(0));
     assert(strafe_tap_event_mask() == ((1ULL << 29) | (1ULL << 30)));
     check_instant_switch(StrafeDirectionRight);

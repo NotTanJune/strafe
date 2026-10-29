@@ -227,8 +227,10 @@ never runs its own animated version. For the field-by-field derivation, read
 
 If an older build opens but swipes do nothing on macOS 27, rebuild and install
 the current source. macOS 27 requires an embedded IOHID payload on synthetic
-gestures and reverses their direction encoding. This build handles both at
-runtime, retaining the existing gesture format on earlier macOS versions.
+gestures, and the Dock reads a synthetic gesture's direction in the Natural
+scrolling orientation. This build handles both at runtime (it checks the
+Natural scrolling setting each time it posts), retaining the existing gesture
+format on earlier macOS versions.
 
 After replacing an ad-hoc signed build, remove the stale strafe entry in
 **System Settings › Privacy & Security › Accessibility**, add the updated

@@ -70,13 +70,42 @@ bool strafe_uses_iohid_payload(void) {
     return false;
 }
 
+// Whether "Natural scrolling" is on (System Settings > Trackpad > Scroll &
+// Zoom). An absent key means the macOS default, which is on. Read at post time,
+// not cached, so toggling the setting takes effect without relaunching.
+static bool natural_scrolling_enabled(void) {
+    CFPropertyListRef value = CFPreferencesCopyAppValue(
+        CFSTR("com.apple.swipescrolldirection"), kCFPreferencesAnyApplication);
+    if (!value) { return true; }
+    bool enabled = true;
+    if (CFGetTypeID(value) == CFBooleanGetTypeID()) {
+        enabled = CFBooleanGetValue((CFBooleanRef)value);
+    } else if (CFGetTypeID(value) == CFNumberGetTypeID()) {
+        int number = 1;
+        CFNumberGetValue((CFNumberRef)value, kCFNumberIntType, &number);
+        enabled = number != 0;
+    }
+    CFRelease(value);
+    return enabled;
+}
+
+// MEASURED on macOS 27.0 (26A428), one display: the Dock reads a POSTED
+// gesture's direction in the Natural-scrolling orientation, so the posted sign
+// must be reversed only when Natural scrolling is on. An INCOMING real gesture's
+// sign does not depend on the setting (see strafe_event_moves_right). Coupling
+// both to one macOS 27 flag reversed swipes with Natural scrolling on and
+// inverted the first/last-Space guard with it off (issue #10).
+bool strafe_posted_sign_reversed(void) {
+    return strafe_uses_iohid_payload() && natural_scrolling_enabled();
+}
+
 // One phase of a horizontal dock swipe, with progress and velocity supplied by
 // the caller. Every field the WindowServer reads is set here; the two callers
 // below differ only in the numbers they hand it.
 static bool post_dock_swipe_shaped(CGSGesturePhase phase, double progress, double velocity) {
     const bool augmented = strafe_uses_iohid_payload();
     // Keep the caller-facing sign stable: positive means the Space on the right.
-    if (augmented) { progress = -progress; velocity = -velocity; }
+    if (strafe_posted_sign_reversed()) { progress = -progress; velocity = -velocity; }
     CGEventRef ev = CGEventCreate(NULL);
     if (!ev) { return false; }
     CGEventSetIntegerValueField(ev, kCGSEventTypeField,            kCGSEventDockControl);
@@ -275,8 +304,11 @@ int64_t strafe_event_source_pid(CGEventRef event) {
     return CGEventGetIntegerValueField(event, kCGEventSourceUnixProcessID);
 }
 
+// Direction of a REAL (pid 0) gesture from the sign of field 124/129: positive
+// means the Space on the right, on every macOS version and with Natural
+// scrolling on or off (measured on macOS 27.0, 26A428, both settings).
 bool strafe_event_moves_right(double progressOrVelocity) {
-    return strafe_uses_iohid_payload() ? progressOrVelocity < 0 : progressOrVelocity > 0;
+    return progressOrVelocity > 0;
 }
 
 void strafe_clear_swipe_motion(CGEventRef event) {
