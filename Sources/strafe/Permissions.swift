@@ -30,7 +30,7 @@ enum Permissions {
         let cgs = cgsAvailable ? "yes" : "no"
         print("strafe status")
         print("  Accessibility granted: \(ax)")
-        print("  Event tap:             see menu (CLI creates no tap)")
+        print("  Event tap:             see menu/settings (CLI creates no tap)")
         print("  CGS symbols resolved:  \(cgs)")
         print("  Transition speed:      \(TransitionSpeed.stored.title)")
     }
