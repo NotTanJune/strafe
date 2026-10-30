@@ -20,6 +20,11 @@ if args.isEmpty || args == ["settings"] {
     } else {
         runMenuBarApp(engine: engine, openSettings: args == ["settings"])
     }
+} else if args == ["serve"] {
+    // Headless helper inside OpenLogi: the same services, no menu-bar icon,
+    // menus, or settings window, and no permission prompt (the supervising
+    // agent's grant covers this process).
+    runMenuBarApp(engine: engine, showsStatusItem: false)
 } else {
     exit(runCLI(args, engine: engine))
 }
@@ -117,6 +122,7 @@ func runCLI(_ args: [String], engine: GestureSwitchEngine) -> Int32 {
         usage:
           strafe                      start the menu-bar app
           strafe settings             open the settings window
+          strafe serve                run headless (no menu-bar icon)
           strafe switch left|right    switch space once and exit
           strafe status               print accessibility / tap status
           strafe speed [preset]       show or set the swipe transition speed
@@ -130,13 +136,13 @@ func runCLI(_ args: [String], engine: GestureSwitchEngine) -> Int32 {
 // MARK: - Menu-bar app mode
 
 @MainActor
-func runMenuBarApp(engine: GestureSwitchEngine, openSettings: Bool = false) {
+func runMenuBarApp(engine: GestureSwitchEngine, openSettings: Bool = false, showsStatusItem: Bool = true) {
     let app = NSApplication.shared
     // LSUIElement is also set in Info.plist; set it here so running the raw
     // binary (unbundled) still behaves as an accessory with no dock icon.
     app.setActivationPolicy(.accessory)
 
-    let delegate = AppDelegate(engine: engine, openSettings: openSettings)
+    let delegate = AppDelegate(engine: engine, openSettings: openSettings, showsStatusItem: showsStatusItem)
     app.delegate = delegate
     app.run()
 }
@@ -149,17 +155,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeys: HotkeyManager!
     private var statusItem: StatusItemController!
     private let openSettingsOnLaunch: Bool
+    private let showsStatusItem: Bool
     private var settingsObserver: (any NSObjectProtocol)?
 
-    init(engine: GestureSwitchEngine, openSettings: Bool = false) {
+    init(engine: GestureSwitchEngine, openSettings: Bool = false, showsStatusItem: Bool = true) {
         self.engine = engine
         self.openSettingsOnLaunch = openSettings
+        self.showsStatusItem = showsStatusItem
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prompt for accessibility up front so the tap can be created.
-        Permissions.checkAccessibility(prompt: true)
+        Permissions.checkAccessibility(prompt: showsStatusItem)
 
         controlServer = StrafeControlServer(engine: engine)
         controlServer.start()
@@ -169,6 +177,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys = HotkeyManager(engine: engine)
         hotkeys.start()
 
+        if showsStatusItem { installStatusItemAndMenus() }
+
+        // SPEC §2.4 / §5: reset the prediction dictionary to live CGS data
+        // whenever the OS reports a real space change, so rapid repeated swipes
+        // don't overshoot bounds or snap back off a stale predicted index.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [engine] _ in
+            engine.resetPredictions()
+        }
+
+        interceptor.start()
+        if showsStatusItem && openSettingsOnLaunch { statusItem.showSettings() }
+    }
+
+    /// The menu-bar icon, app menu, and settings-window wiring; skipped by
+    /// `strafe serve`.
+    private func installStatusItemAndMenus() {
         statusItem = StatusItemController(interceptor: interceptor, engine: engine, hotkeys: hotkeys)
         let appMenu = NSMenu()
         let rootItem = NSMenuItem()
@@ -186,20 +214,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.statusItem?.showSettings() }
         }
-
-        // SPEC §2.4 / §5: reset the prediction dictionary to live CGS data
-        // whenever the OS reports a real space change, so rapid repeated swipes
-        // don't overshoot bounds or snap back off a stale predicted index.
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [engine] _ in
-            engine.resetPredictions()
-        }
-
-        interceptor.start()
-        if openSettingsOnLaunch { statusItem.showSettings() }
     }
 
     // Sent when the app is opened while already running. This how you unhide the menubar icon.
