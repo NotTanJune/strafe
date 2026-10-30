@@ -12,7 +12,11 @@ let engine = GestureSwitchEngine()
 let args = Array(CommandLine.arguments.dropFirst())
 
 if args.isEmpty {
-    runMenuBarApp(engine: engine)
+    runMenuBarApp(engine: engine, showsStatusItem: true)
+} else if args == ["serve"] {
+    // Headless helper inside OpenLogi: the same services, no menu-bar icon,
+    // and no permission prompt (the supervising agent's grant covers it).
+    runMenuBarApp(engine: engine, showsStatusItem: false)
 } else {
     exit(runCLI(args, engine: engine))
 }
@@ -109,6 +113,7 @@ func runCLI(_ args: [String], engine: GestureSwitchEngine) -> Int32 {
 
         usage:
           strafe                      start the menu-bar app
+          strafe serve                run headless (no menu-bar icon)
           strafe switch left|right    switch space once and exit
           strafe status               print accessibility / tap status
           strafe speed [preset]       show or set the swipe transition speed
@@ -122,13 +127,13 @@ func runCLI(_ args: [String], engine: GestureSwitchEngine) -> Int32 {
 // MARK: - Menu-bar app mode
 
 @MainActor
-func runMenuBarApp(engine: GestureSwitchEngine) {
+func runMenuBarApp(engine: GestureSwitchEngine, showsStatusItem: Bool) {
     let app = NSApplication.shared
     // LSUIElement is also set in Info.plist; set it here so running the raw
     // binary (unbundled) still behaves as an accessory with no dock icon.
     app.setActivationPolicy(.accessory)
 
-    let delegate = AppDelegate(engine: engine)
+    let delegate = AppDelegate(engine: engine, showsStatusItem: showsStatusItem)
     app.delegate = delegate
     app.run()
 }
@@ -136,19 +141,21 @@ func runMenuBarApp(engine: GestureSwitchEngine) {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let engine: GestureSwitchEngine
+    private let showsStatusItem: Bool
     private var controlServer: StrafeControlServer!
     private var interceptor: SwipeInterceptor!
     private var hotkeys: HotkeyManager!
     private var statusItem: StatusItemController!
 
-    init(engine: GestureSwitchEngine) {
+    init(engine: GestureSwitchEngine, showsStatusItem: Bool) {
         self.engine = engine
+        self.showsStatusItem = showsStatusItem
         super.init()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Prompt for accessibility up front so the tap can be created.
-        Permissions.checkAccessibility(prompt: true)
+        Permissions.checkAccessibility(prompt: showsStatusItem)
 
         controlServer = StrafeControlServer(engine: engine)
         controlServer.start()
@@ -158,7 +165,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeys = HotkeyManager(engine: engine)
         hotkeys.start()
 
-        statusItem = StatusItemController(interceptor: interceptor, engine: engine, hotkeys: hotkeys)
+        if showsStatusItem {
+            statusItem = StatusItemController(interceptor: interceptor, engine: engine, hotkeys: hotkeys)
+        }
 
         // SPEC §2.4 / §5: reset the prediction dictionary to live CGS data
         // whenever the OS reports a real space change, so rapid repeated swipes
